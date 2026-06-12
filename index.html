@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Zine Maker</title>
+  <meta name="description" content="Create and print an 8-page folded zine from one sheet of paper." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>MINI ZINE MAKER</h1>
+    <div class="actions">
+      <select id="paperSize">
+        <option value="letter">US Letter</option>
+        <option value="a4">A4</option>
+      </select>
+      <button id="downloadPng">Download PNG</button>
+      <button id="printZine" class="primary">Print</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <h2>Pages</h2>
+      <div id="pageButtons"></div>
+    </aside>
+
+    <section class="canvas-wrap">
+      <canvas id="zineCanvas" width="1100" height="850"></canvas>
+      <p class="hint">Print, fold, cut the center slit, and collapse into an 8-page booklet.</p>
+    </section>
+
+    <aside class="editor">
+      <h2>Edit Page <span id="currentPage">1</span></h2>
+      <label>
+        Caption
+        <textarea id="captionInput" rows="4" placeholder="Add text for this panel"></textarea>
+      </label>
+      <label>
+        Image
+        <input type="file" id="imageInput" accept="image/*" />
+      </label>
+      <label>
+        Image Fit
+        <select id="fitInput">
+          <option value="cover">Cover</option>
+          <option value="contain">Contain</option>
+        </select>
+      </label>
+      <button id="clearImage">Clear Image</button>
+      <button id="resetAll" class="danger">Start Over</button>
+    </aside>
+  </main>
+
+  <section class="fold-guide">
+    <h2>How to Fold</h2>
+    <ol>
+      <li>Fold the paper in half lengthwise, then unfold.</li>
+      <li>Fold it in half widthwise, then unfold.</li>
+      <li>Fold each short side into the center crease, then unfold.</li>
+      <li>Fold widthwise again and cut the center crease only halfway.</li>
+      <li>Open it, fold lengthwise, push the ends together, and collapse into a booklet.</li>
+    </ol>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
