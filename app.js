@@ -1,255 +1,296 @@
 const canvas = document.getElementById('zineCanvas');
 const ctx = canvas.getContext('2d');
-const pageButtons = document.getElementById('pageButtons');
-const captionInput = document.getElementById('captionInput');
-const imageInput = document.getElementById('imageInput');
-const fitInput = document.getElementById('fitInput');
-const currentPage = document.getElementById('currentPage');
-const paperSize = document.getElementById('paperSize');
 
-let selectedPage = 1;
+const PAPER = {
+  letter: { label: 'US Letter', width: 1100, height: 850, pdf: [11, 8.5] },
+  a4: { label: 'A4', width: 1123, height: 794, pdf: [11.69, 8.27] }
+};
 
-const pages = Array.from({ length: 8 }, (_, i) => ({
-  id: i + 1,
-  caption: i === 0 ? 'Cover' : '',
-  image: null,
-  fit: 'cover'
-}));
+let state = {
+  side: 'front',
+  paper: 'letter',
+  selectedPanel: 1,
+  backMode: 'panels',
+  fullBack: { image: null, caption: '' },
+  panels: Array.from({ length: 16 }, (_, i) => ({
+    id: i + 1,
+    caption: i === 0 ? 'Cover' : '',
+    image: null,
+    fit: 'cover',
+    layout: 'photoCaption'
+  }))
+};
 
-// Physical zine print order/rotation approximation for an 8-page one-sheet zine.
-// Top row panels are rotated 180 degrees.
-const layoutOrder = [8, 1, 2, 3, 7, 6, 5, 4];
+const els = {
+  frontBtn: document.getElementById('frontBtn'),
+  backBtn: document.getElementById('backBtn'),
+  previewTitle: document.getElementById('previewTitle'),
+  previewHelp: document.getElementById('previewHelp'),
+  paperSize: document.getElementById('paperSize'),
+  panelSelect: document.getElementById('panelSelect'),
+  layoutSelect: document.getElementById('layoutSelect'),
+  fitSelect: document.getElementById('fitSelect'),
+  captionInput: document.getElementById('captionInput'),
+  imageInput: document.getElementById('imageInput'),
+  clearPanelBtn: document.getElementById('clearPanelBtn'),
+  exportPdfBtn: document.getElementById('exportPdfBtn'),
+  downloadFrontBtn: document.getElementById('downloadFrontBtn'),
+  downloadBackBtn: document.getElementById('downloadBackBtn'),
+  panelEditor: document.getElementById('panelEditor'),
+  fullBackEditor: document.getElementById('fullBackEditor'),
+  fullBackImageInput: document.getElementById('fullBackImageInput'),
+  fullBackCaption: document.getElementById('fullBackCaption')
+};
 
-function renderPageButtons() {
-  pageButtons.innerHTML = '';
-  pages.forEach(page => {
-    const btn = document.createElement('button');
-    btn.className = 'page-btn' + (page.id === selectedPage ? ' active' : '');
-    btn.textContent = page.id === 1 ? '1 Cover' : `Page ${page.id}`;
-    btn.onclick = () => selectPage(page.id);
-    pageButtons.appendChild(btn);
-  });
+function activePanelIds() {
+  return state.side === 'front'
+    ? [1,2,3,4,5,6,7,8]
+    : [9,10,11,12,13,14,15,16];
 }
 
-function selectPage(id) {
-  selectedPage = id;
-  const page = pages[id - 1];
-  currentPage.textContent = id;
-  captionInput.value = page.caption;
-  fitInput.value = page.fit;
-  imageInput.value = '';
-  renderPageButtons();
-  drawZine();
+function getPanel(id) {
+  return state.panels.find(p => p.id === id);
 }
 
-function drawImageInRect(img, x, y, w, h, fit) {
-  const imgRatio = img.width / img.height;
-  const rectRatio = w / h;
-  let dw, dh, dx, dy;
+function setupPanelSelect() {
+  const ids = activePanelIds();
+  els.panelSelect.innerHTML = ids.map(id => `<option value="${id}">Panel ${id}</option>`).join('');
+  if (!ids.includes(state.selectedPanel)) state.selectedPanel = ids[0];
+  els.panelSelect.value = state.selectedPanel;
+  loadEditorFromPanel();
+}
 
-  if (fit === 'contain') {
-    if (imgRatio > rectRatio) {
-      dw = w;
-      dh = w / imgRatio;
-    } else {
-      dh = h;
-      dw = h * imgRatio;
-    }
-  } else {
-    if (imgRatio > rectRatio) {
-      dh = h;
-      dw = h * imgRatio;
-    } else {
-      dw = w;
-      dh = w / imgRatio;
+function panelRects() {
+  const margin = 35;
+  const gap = 12;
+  const cols = 4;
+  const rows = 2;
+  const w = (canvas.width - margin * 2 - gap * (cols - 1)) / cols;
+  const h = (canvas.height - margin * 2 - gap * (rows - 1)) / rows;
+  const ids = activePanelIds();
+  const rects = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      rects.push({ id: ids[idx], x: margin + c * (w + gap), y: margin + r * (h + gap), w, h });
     }
   }
+  return rects;
+}
 
-  dx = x + (w - dw) / 2;
-  dy = y + (h - dh) / 2;
-
+function drawImageFit(img, x, y, w, h, fit='cover') {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const scale = fit === 'contain' ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+  const nw = iw * scale;
+  const nh = ih * scale;
+  const nx = x + (w - nw) / 2;
+  const ny = y + (h - nh) / 2;
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
-  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.drawImage(img, nx, ny, nw, nh);
   ctx.restore();
 }
 
 function wrapText(text, x, y, maxWidth, lineHeight) {
-  const words = text.split(' ');
+  const words = text.split(/\s+/).filter(Boolean);
   let line = '';
-  for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' ';
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && n > 0) {
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
       ctx.fillText(line, x, y);
-      line = words[n] + ' ';
+      line = word;
       y += lineHeight;
     } else {
-      line = testLine;
+      line = test;
     }
   }
-  ctx.fillText(line, x, y);
+  if (line) ctx.fillText(line, x, y);
 }
 
-function drawPanel(pageNumber, x, y, w, h, upsideDown = false) {
-  const page = pages[pageNumber - 1];
+function drawPanel(rect) {
+  const panel = getPanel(rect.id);
+  const selected = rect.id === state.selectedPanel && !(state.side === 'back' && state.backMode === 'fullPhoto');
   ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.strokeStyle = selected ? '#f4c542' : '#222';
+  ctx.lineWidth = selected ? 5 : 2;
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-  if (upsideDown) {
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.rotate(Math.PI);
-    x = -w / 2;
-    y = -h / 2;
-  }
+  const pad = 12;
+  const captionHeight = panel.layout === 'photoCaption' ? 44 : 0;
+  const imgH = rect.h - pad * 2 - captionHeight;
 
-  ctx.fillStyle = '#faf6ec';
-  ctx.fillRect(x, y, w, h);
-
-  if (page.image) {
-    drawImageInRect(page.image, x + 8, y + 8, w - 16, h - 58, page.fit);
-  } else {
-    ctx.fillStyle = '#e9dfcf';
-    ctx.fillRect(x + 8, y + 8, w - 16, h - 58);
-    ctx.fillStyle = '#777';
+  if (panel.image && panel.layout !== 'captionOnly') {
+    drawImageFit(panel.image, rect.x + pad, rect.y + pad, rect.w - pad*2, imgH, panel.fit);
+  } else if (panel.layout !== 'captionOnly') {
+    ctx.fillStyle = '#f1f1f1';
+    ctx.fillRect(rect.x + pad, rect.y + pad, rect.w - pad*2, imgH);
+    ctx.fillStyle = '#888';
     ctx.font = '18px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`Page ${pageNumber}`, x + w / 2, y + h / 2);
+    ctx.fillText(`Photo ${rect.id}`, rect.x + rect.w/2, rect.y + rect.h/2 - 10);
   }
 
-  ctx.fillStyle = '#111';
-  ctx.font = '18px Arial';
   ctx.textAlign = 'left';
-  wrapText(page.caption, x + 14, y + h - 35, w - 28, 20);
+  ctx.fillStyle = '#111';
+  ctx.font = panel.layout === 'captionOnly' ? '24px Arial' : '16px Arial';
+  const textY = panel.layout === 'captionOnly' ? rect.y + 45 : rect.y + rect.h - 28;
+  wrapText(panel.caption || '', rect.x + pad, textY, rect.w - pad*2, 22);
 
-  ctx.strokeStyle = pageNumber === selectedPage ? '#d4a900' : '#111';
-  ctx.lineWidth = pageNumber === selectedPage ? 5 : 2;
-  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(0,0,0,.65)';
+  ctx.font = 'bold 14px Arial';
+  ctx.fillText(`${rect.id}`, rect.x + 8, rect.y + 20);
   ctx.restore();
 }
 
-function drawZine() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#f7f2e8';
+function drawFullBack() {
+  ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const margin = 50;
-  const gridW = canvas.width - margin * 2;
-  const gridH = canvas.height - margin * 2;
-  const panelW = gridW / 4;
-  const panelH = gridH / 2;
-
-  layoutOrder.forEach((pageNum, index) => {
-    const col = index % 4;
-    const row = Math.floor(index / 4);
-    const x = margin + col * panelW;
-    const y = margin + row * panelH;
-    const upsideDown = row === 0;
-    drawPanel(pageNum, x, y, panelW, panelH, upsideDown);
-  });
-
-  // Fold/cut guide
-  ctx.save();
-  ctx.strokeStyle = '#999';
-  ctx.setLineDash([8, 8]);
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(margin + gridW / 2, margin);
-  ctx.lineTo(margin + gridW / 2, margin + gridH);
-  ctx.moveTo(margin, margin + gridH / 2);
-  ctx.lineTo(margin + gridW, margin + gridH / 2);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#c0392b';
-  ctx.setLineDash([]);
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(margin + gridW / 4, margin + gridH / 2);
-  ctx.lineTo(margin + (gridW / 4) * 3, margin + gridH / 2);
-  ctx.stroke();
-  ctx.restore();
+  if (state.fullBack.image) {
+    drawImageFit(state.fullBack.image, 0, 0, canvas.width, canvas.height, 'cover');
+  } else {
+    ctx.fillStyle = '#eee';
+    ctx.fillRect(35, 35, canvas.width - 70, canvas.height - 70);
+    ctx.fillStyle = '#777';
+    ctx.font = '36px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Full-size back photo', canvas.width/2, canvas.height/2);
+  }
+  if (state.fullBack.caption) {
+    ctx.fillStyle = 'rgba(255,255,255,.86)';
+    ctx.fillRect(55, canvas.height - 135, canvas.width - 110, 85);
+    ctx.fillStyle = '#111';
+    ctx.font = '28px Arial';
+    ctx.textAlign = 'left';
+    wrapText(state.fullBack.caption, 75, canvas.height - 92, canvas.width - 150, 32);
+  }
 }
 
-captionInput.addEventListener('input', () => {
-  pages[selectedPage - 1].caption = captionInput.value;
-  drawZine();
-});
+function render() {
+  const p = PAPER[state.paper];
+  canvas.width = p.width;
+  canvas.height = p.height;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
 
-fitInput.addEventListener('change', () => {
-  pages[selectedPage - 1].fit = fitInput.value;
-  drawZine();
-});
+  els.previewTitle.textContent = state.side === 'front' ? 'Front Side' : 'Back Side';
+  els.previewHelp.textContent = state.side === 'back' && state.backMode === 'fullPhoto'
+    ? 'Back side is set to one full-size photo.'
+    : 'Click any panel to edit it.';
 
-imageInput.addEventListener('change', event => {
-  const file = event.target.files[0];
-  if (!file) return;
+  els.frontBtn.classList.toggle('active', state.side === 'front');
+  els.backBtn.classList.toggle('active', state.side === 'back');
+  els.panelEditor.style.display = state.side === 'back' && state.backMode === 'fullPhoto' ? 'none' : 'block';
+  els.fullBackEditor.style.display = state.side === 'back' && state.backMode === 'fullPhoto' ? 'block' : 'none';
+
+  if (state.side === 'back' && state.backMode === 'fullPhoto') {
+    drawFullBack();
+  } else {
+    panelRects().forEach(drawPanel);
+  }
+}
+
+function loadEditorFromPanel() {
+  const panel = getPanel(state.selectedPanel);
+  els.panelSelect.value = panel.id;
+  els.layoutSelect.value = panel.layout;
+  els.fitSelect.value = panel.fit;
+  els.captionInput.value = panel.caption;
+}
+
+function readImage(file, callback) {
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
-    img.onload = () => {
-      pages[selectedPage - 1].image = img;
-      drawZine();
-    };
+    img.onload = () => callback(img);
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
-});
+}
 
-document.getElementById('clearImage').addEventListener('click', () => {
-  pages[selectedPage - 1].image = null;
-  imageInput.value = '';
-  drawZine();
-});
-
-document.getElementById('resetAll').addEventListener('click', () => {
-  if (!confirm('Clear all captions and images?')) return;
-  pages.forEach((page, index) => {
-    page.caption = index === 0 ? 'Cover' : '';
-    page.image = null;
-    page.fit = 'cover';
-  });
-  selectPage(1);
-});
-
-document.getElementById('downloadPng').addEventListener('click', () => {
-  const link = document.createElement('a');
-  link.download = 'my-zine.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-});
-
-document.getElementById('printZine').addEventListener('click', () => {
-  const dataUrl = canvas.toDataURL('image/png');
-  const win = window.open('', '_blank');
-  win.document.write(`
-    <html>
-      <head>
-        <title>Print Zine</title>
-        <style>
-          body { margin: 0; display: grid; place-items: center; min-height: 100vh; }
-          img { max-width: 100%; height: auto; }
-          @media print { body { margin: 0; } img { width: 100vw; height: auto; } }
-        </style>
-      </head>
-      <body>
-        <img src="${dataUrl}" onload="window.print()" />
-      </body>
-    </html>
-  `);
-  win.document.close();
-});
-
-paperSize.addEventListener('change', () => {
-  if (paperSize.value === 'a4') {
-    canvas.width = 1050;
-    canvas.height = 850;
-  } else {
-    canvas.width = 1100;
-    canvas.height = 850;
+canvas.addEventListener('click', e => {
+  if (state.side === 'back' && state.backMode === 'fullPhoto') return;
+  const bounds = canvas.getBoundingClientRect();
+  const x = (e.clientX - bounds.left) * (canvas.width / bounds.width);
+  const y = (e.clientY - bounds.top) * (canvas.height / bounds.height);
+  const hit = panelRects().find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+  if (hit) {
+    state.selectedPanel = hit.id;
+    setupPanelSelect();
+    render();
   }
-  drawZine();
 });
 
-renderPageButtons();
-selectPage(1);
+els.frontBtn.addEventListener('click', () => { state.side = 'front'; setupPanelSelect(); render(); });
+els.backBtn.addEventListener('click', () => { state.side = 'back'; setupPanelSelect(); render(); });
+els.paperSize.addEventListener('change', e => { state.paper = e.target.value; render(); });
+
+document.querySelectorAll('input[name="backMode"]').forEach(input => {
+  input.addEventListener('change', e => { state.backMode = e.target.value; render(); });
+});
+
+els.panelSelect.addEventListener('change', e => { state.selectedPanel = Number(e.target.value); loadEditorFromPanel(); render(); });
+els.layoutSelect.addEventListener('change', e => { getPanel(state.selectedPanel).layout = e.target.value; render(); });
+els.fitSelect.addEventListener('change', e => { getPanel(state.selectedPanel).fit = e.target.value; render(); });
+els.captionInput.addEventListener('input', e => { getPanel(state.selectedPanel).caption = e.target.value; render(); });
+els.imageInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  readImage(file, img => { getPanel(state.selectedPanel).image = img; render(); });
+});
+els.clearPanelBtn.addEventListener('click', () => {
+  const p = getPanel(state.selectedPanel);
+  p.image = null; p.caption = ''; p.layout = 'photoCaption'; p.fit = 'cover';
+  els.imageInput.value = '';
+  loadEditorFromPanel();
+  render();
+});
+els.fullBackImageInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  readImage(file, img => { state.fullBack.image = img; render(); });
+});
+els.fullBackCaption.addEventListener('input', e => { state.fullBack.caption = e.target.value; render(); });
+
+function downloadCanvas(side, filename) {
+  const currentSide = state.side;
+  state.side = side;
+  render();
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/jpeg', 0.95);
+  link.click();
+  state.side = currentSide;
+  render();
+}
+
+els.downloadFrontBtn.addEventListener('click', () => downloadCanvas('front', 'mini-book-front.jpg'));
+els.downloadBackBtn.addEventListener('click', () => downloadCanvas('back', 'mini-book-back.jpg'));
+
+els.exportPdfBtn.addEventListener('click', () => {
+  const { jsPDF } = window.jspdf;
+  const currentSide = state.side;
+  const paper = PAPER[state.paper];
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'in', format: paper.pdf });
+
+  state.side = 'front'; render();
+  const front = canvas.toDataURL('image/jpeg', 0.95);
+  pdf.addImage(front, 'JPEG', 0, 0, paper.pdf[0], paper.pdf[1]);
+
+  pdf.addPage(paper.pdf, 'landscape');
+  state.side = 'back'; render();
+  const back = canvas.toDataURL('image/jpeg', 0.95);
+  pdf.addImage(back, 'JPEG', 0, 0, paper.pdf[0], paper.pdf[1]);
+
+  pdf.save('mini-book-printable.pdf');
+  state.side = currentSide;
+  render();
+});
+
+setupPanelSelect();
+render();

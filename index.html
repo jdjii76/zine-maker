@@ -3,67 +3,105 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mini Zine Maker</title>
-  <meta name="description" content="Create and print an 8-page folded zine from one sheet of paper." />
+  <title>Mini Book Creator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>MINI ZINE MAKER</h1>
+    <div>
+      <h1>Mini Book Creator</h1>
+      <p>Create a front/back printable zine with photos, captions, and full-page image options.</p>
+    </div>
     <div class="actions">
-      <select id="paperSize">
-        <option value="letter">US Letter</option>
-        <option value="a4">A4</option>
-      </select>
-      <button id="downloadPng">Download PNG</button>
-      <button id="printZine" class="primary">Print</button>
+      <button id="exportPdfBtn">Export PDF</button>
+      <button id="downloadFrontBtn">Download Front JPG</button>
+      <button id="downloadBackBtn">Download Back JPG</button>
     </div>
   </header>
 
-  <main class="layout">
+  <main class="app">
     <aside class="sidebar">
-      <h2>Pages</h2>
-      <div id="pageButtons"></div>
-    </aside>
+      <section class="card">
+        <h2>Print Side</h2>
+        <div class="segmented">
+          <button id="frontBtn" class="active">Front</button>
+          <button id="backBtn">Back</button>
+        </div>
+      </section>
 
-    <section class="canvas-wrap">
-      <canvas id="zineCanvas" width="1100" height="850"></canvas>
-      <p class="hint">Print, fold, cut the center slit, and collapse into an 8-page booklet.</p>
-    </section>
-
-    <aside class="editor">
-      <h2>Edit Page <span id="currentPage">1</span></h2>
-      <label>
-        Caption
-        <textarea id="captionInput" rows="4" placeholder="Add text for this panel"></textarea>
-      </label>
-      <label>
-        Image
-        <input type="file" id="imageInput" accept="image/*" />
-      </label>
-      <label>
-        Image Fit
-        <select id="fitInput">
-          <option value="cover">Cover</option>
-          <option value="contain">Contain</option>
+      <section class="card">
+        <h2>Paper</h2>
+        <label>Paper Size</label>
+        <select id="paperSize">
+          <option value="letter">US Letter</option>
+          <option value="a4">A4</option>
         </select>
-      </label>
-      <button id="clearImage">Clear Image</button>
-      <button id="resetAll" class="danger">Start Over</button>
+      </section>
+
+      <section class="card">
+        <h2>Back Side Layout</h2>
+        <label class="radio"><input type="radio" name="backMode" value="panels" checked /> 8 more panels</label>
+        <label class="radio"><input type="radio" name="backMode" value="fullPhoto" /> One full-size photo</label>
+      </section>
+
+      <section class="card" id="panelEditor">
+        <h2>Edit Selected Panel</h2>
+        <p class="small">Click a panel on the page first.</p>
+        <label>Panel</label>
+        <select id="panelSelect"></select>
+
+        <label>Layout</label>
+        <select id="layoutSelect">
+          <option value="photoCaption">Photo + Caption</option>
+          <option value="photoOnly">Full Photo</option>
+          <option value="captionOnly">Caption Only</option>
+        </select>
+
+        <label>Photo</label>
+        <input type="file" id="imageInput" accept="image/*" />
+
+        <label>Image Fit</label>
+        <select id="fitSelect">
+          <option value="cover">Cover / Fill</option>
+          <option value="contain">Contain / Fit</option>
+        </select>
+
+        <label>Caption</label>
+        <textarea id="captionInput" rows="4" placeholder="Type caption here..."></textarea>
+
+        <button id="clearPanelBtn" class="secondary">Clear Panel</button>
+      </section>
+
+      <section class="card" id="fullBackEditor">
+        <h2>Full Back Photo</h2>
+        <label>Upload Photo</label>
+        <input type="file" id="fullBackImageInput" accept="image/*" />
+        <label>Caption / Title</label>
+        <textarea id="fullBackCaption" rows="3" placeholder="Optional text for the full back side..."></textarea>
+      </section>
+
+      <section class="card">
+        <h2>How to Use</h2>
+        <ol class="small steps">
+          <li>Choose Front or Back.</li>
+          <li>Click a panel.</li>
+          <li>Upload a photo and add text.</li>
+          <li>Use “Full Photo” for big image pages.</li>
+          <li>Export PDF and print double-sided.</li>
+        </ol>
+      </section>
     </aside>
+
+    <section class="previewArea">
+      <div class="previewHeader">
+        <h2 id="previewTitle">Front Side</h2>
+        <p id="previewHelp">Click any panel to edit it.</p>
+      </div>
+      <canvas id="zineCanvas"></canvas>
+    </section>
   </main>
 
-  <section class="fold-guide">
-    <h2>How to Fold</h2>
-    <ol>
-      <li>Fold the paper in half lengthwise, then unfold.</li>
-      <li>Fold it in half widthwise, then unfold.</li>
-      <li>Fold each short side into the center crease, then unfold.</li>
-      <li>Fold widthwise again and cut the center crease only halfway.</li>
-      <li>Open it, fold lengthwise, push the ends together, and collapse into a booklet.</li>
-    </ol>
-  </section>
-
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
